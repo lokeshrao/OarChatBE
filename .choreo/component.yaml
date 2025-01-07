@@ -1,11 +1,11 @@
 schemaVersion: "1.1"
 endpoints:
-  - name: chat-service-endpoint
-    displayName: chat-service-endpoint
-    service:
-      basePath: /chat
-      port: 9090
-    type: WS
-    networkVisibilities:
-      - Public
-    schemaFilePath: .  # Optional: Socket.IO doesn't require a schema file for most setups
+    - name: chat-service-endpoint
+      displayName: chat-service-endpoint
+      service:
+        basePath: /
+        port: 9090
+      type: WS
+      networkVisibilities:
+        - Public
+      schemaFilePath: .

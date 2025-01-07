@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Socket.IO Client Test</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        var socket = io('http://192.168.0.105:3000');
+        socket.on('connect', () => {
+            console.log('Connected to server with id: ' + socket.id);
+            socket.emit('userOnline', { userId: 'user123' });  // Example to send user online event
+        });
+    </script>
+</head>
+<body>
+    <h1>Socket.IO Client Test</h1>
+</body>
+</html>

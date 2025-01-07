@@ -5,7 +5,7 @@ endpoints:
     service:
       basePath: /api
       port: 8080
-    type: HTTP
+    type: REST
     networkVisibilities:
       - Public
     schemaFilePath: null

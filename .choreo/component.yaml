@@ -3,7 +3,7 @@ endpoints:
   - name: chat-service-endpoint
     displayName: chat-service-endpoint
     service:
-      basePath: socket.io
+      basePath: /chat
       port: 9090
     type: WS
     networkVisibilities:

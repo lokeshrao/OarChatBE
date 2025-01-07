@@ -3,4 +3,4 @@ endpoints:
 - name: chat-service-endpoint
   service:
     port: 9090
-  type: WebSocket
+  type: WS

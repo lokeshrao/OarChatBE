@@ -1,6 +1,11 @@
-schemaVersion: 1.0
+schemaVersion: "1.1"
 endpoints:
-- name: chat-service-endpoint
-  service:
-    port: 9090
-  type: WS
+    - name: chat-service-endpoint
+      displayName: chat-service-endpoint
+      service:
+        basePath: /
+        port: 9090
+      type: WS
+      networkVisibilities:
+        - Public
+      schemaFilePath: .

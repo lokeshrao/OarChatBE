@@ -5,10 +5,6 @@ const cors = require('cors');
 const fs = require('fs');
 const admin = require('firebase-admin');
 
-admin.initializeApp({
-    credential: admin.credential.cert('./oarchat-firebase-adminsdk-sopnx-90d680db88.json')
-});
-
 const app = express();
 app.use(cors());
 

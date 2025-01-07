@@ -21,7 +21,7 @@ const chatFile = 'chats.json';
 const messagesFile = 'messages.json';
 
 
-const PORT = 3000;
+const PORT = 9090;
 
 let users = {};
 let chats = {};

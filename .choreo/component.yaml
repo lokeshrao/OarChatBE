@@ -1,11 +1,11 @@
 schemaVersion: "1.1"
 endpoints:
-    - name: chat-service-endpoint
-      displayName: chat-service-endpoint
-      service:
-        basePath: /
-        port: 9090
-      type: WS
-      networkVisibilities:
-        - Public
-      schemaFilePath: .
+  - name: rest-api-endpoint
+    displayName: REST API Endpoint
+    service:
+      basePath: /api
+      port: 8080
+    type: HTTP
+    networkVisibilities:
+      - Public
+    schemaFilePath: null

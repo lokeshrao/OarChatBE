@@ -1,11 +1,11 @@
 schemaVersion: "1.1"
 endpoints:
-  - name: oarchat
+  - name: chat-service-endpoint
     displayName: chat-service-endpoint
     service:
-      basePath: /socket.io
+      basePath: socket.io
       port: 9090
     type: WS
     networkVisibilities:
       - Public
-    schemaFilePath: 
+    schemaFilePath: .  # Optional: Socket.IO doesn't require a schema file for most setups

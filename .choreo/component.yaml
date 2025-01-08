@@ -3,7 +3,7 @@ endpoints:
   - name: rest-api-endpoint
     displayName: REST API Endpoint
     service:
-      basePath: /api
+      basePath: /
       port: 9090
     type: REST
     networkVisibilities:

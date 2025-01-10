@@ -415,7 +415,7 @@ io.on('connection', (socket) => {
 });
 
 // Test route for HTTP requests
-app.get('/', (req, res) => {
+app.get('/oarchat', (req, res) => {
     res.send('<h1>Socket.IO Server is Running</h1>');
 });
 

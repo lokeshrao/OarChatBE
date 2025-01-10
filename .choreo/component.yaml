@@ -1,12 +1,12 @@
 # Copyright (c) 2024, WSO2 LLC. (https://www.wso2.com/) All Rights Reserved.
-# 
+#
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -14,28 +14,31 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# +required The configuration file schema version
 schemaVersion: 1.1
 
 # +optional Incoming connection details for the component
 endpoints:
   # +required Unique name for the endpoint.
   # This name will be used when generating the managed API
-  - name: chat_api
+  - name: books-rest-endpoint
     # +optional Display name for the endpoint.
-    displayName: Chat API
+    displayName: Books REST Endpoint
     # +required Service section has the user service endpoint details
     service:
-      # +optional Context (base path) of the API that gets exposed via the endpoint.
-      basePath: /
+      # +optional Base path of the API that gets exposed via the endpoint.
+      # This is mandatory if the endpoint type is set to REST or GraphQL.
+      basePath: /oarchat
       # +required Numeric port value that gets exposed via the endpoint
       port: 8080
     # +required Type of traffic that the endpoint is accepting.
     # Allowed values: REST, GraphQL, GRPC, TCP, UDP.
-    type: WS
+    type: REST
     # +optional Network level visibilities of the endpoint.
     # Accepted values: Project|Organization|Public(Default).
-    networkVisibilities: 
+    networkVisibilities:
       - Public
-    # +optional Path to the schema definition file. Defaults to wild card route if not provided
+    # +optional The path to the schema definition file.
+    # Defaults to wildcard route if not specified.
     # This is only applicable to REST endpoint types.
     # The path should be relative to the docker context.

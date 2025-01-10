@@ -1,36 +1,17 @@
 schemaVersion: 1.1
 
-
-# +optional Incoming connection details for the component
-
 endpoints:
 
-# +required Unique name for the endpoint.
+  - name: greeter-sample
 
-- name: todolist
+    service:
 
-  # +optional Display name for the endpoint.
+      basePath: /oarchat
 
-  displayName: Todo List Service
+      port: 9090
 
-  # +required Service section has the user service endpoint details
-
-  service:
-
-    # +optional Context (base path) of the API that gets exposed via the endpoint.
-
-    basePath: /oarchat
-
-    # +required Numeric port value that gets exposed via the endpoint
-
-    port: 8080
-
-    # +required Type of traffic that the endpoint is accepting.
-
-    type: REST
-
-    # +optional Network level visibilities of the endpoint.
+      type: REST
 
     networkVisibilities:
 
-    - Public
+      - Public

@@ -1,11 +1,17 @@
-schemaVersion: "1.1"
-endpoints:
-  - name: rest-api-endpoint
-    displayName: REST API Endpoint
-    service:
-      basePath: /
+apiVersion: core.choreo.dev/v1beta1
+
+kind: ComponentConfig
+
+spec:
+
+  inbound:
+
+    - name: YourSocketServer
+
       port: 9090
-    type: REST
-    networkVisibilities:
-      - Public
-    schemaFilePath: .
+
+      type: WS
+
+      networkVisibility: Public
+
+      context: /

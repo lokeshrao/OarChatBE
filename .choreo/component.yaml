@@ -6,12 +6,12 @@ spec:
 
   inbound:
 
-    - name: YourSocketServer
+    - name: Your Service Name
 
       port: 9090
 
-      type: WS
+      type: REST
 
       networkVisibility: Public
 
-      context: /
+      context: /oarchat

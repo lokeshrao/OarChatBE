@@ -4,10 +4,10 @@ info:
   description: API specification for the OarChat real-time messaging application.
   version: 1.0.0
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8080/oar
     description: Development Server
 paths:
-  /oarchat:
+  /:
     get:
       summary: Test if the server is running
       description: Returns a simple HTML message to confirm the server is active.

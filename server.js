@@ -6,6 +6,8 @@ const fs = require('fs');
 const admin = require('firebase-admin');
 
 const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
 const server = http.createServer(app);
@@ -415,7 +417,7 @@ io.on('connection', (socket) => {
 });
 
 // Test route for HTTP requests
-app.get('/oarchat', (req, res) => {
+app.get('/oar', (req, res) => {
     res.send('<h1>Socket.IO Server is Running</h1>');
 });
 

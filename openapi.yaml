@@ -1,0 +1,205 @@
+openapi: 3.0.3
+info:
+  title: OarChat Server API
+  description: API specification for the OarChat real-time messaging application.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Development Server
+paths:
+  /oarchat:
+    get:
+      summary: Test if the server is running
+      description: Returns a simple HTML message to confirm the server is active.
+      responses:
+        '200':
+          description: Server is running
+          content:
+            text/html:
+              schema:
+                type: string
+  /users:
+    get:
+      summary: Get all users
+      description: Fetch a list of all users.
+      responses:
+        '200':
+          description: A list of users.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    email:
+                      type: string
+                    is_online:
+                      type: boolean
+                    last_online:
+                      type: integer
+                      format: int64
+    post:
+      summary: Create or update a user
+      description: Add a new user or update an existing user's details.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                name:
+                  type: string
+                email:
+                  type: string
+                username:
+                  type: string
+              required:
+                - user_id
+                - name
+                - email
+      responses:
+        '200':
+          description: User created or updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+  /chats:
+    get:
+      summary: Get all chats for a user
+      description: Fetch all chat details for a specific user.
+      parameters:
+        - name: user_id
+          in: query
+          description: The ID of the user to fetch chats for.
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of chats.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                    type:
+                      type: string
+                    members:
+                      type: array
+                      items:
+                        type: string
+                    created_at:
+                      type: integer
+                      format: int64
+                    updated_at:
+                      type: integer
+                      format: int64
+    post:
+      summary: Create a new chat
+      description: Create a new chat with specified members.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [individual, group]
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - id
+                - name
+                - type
+                - user_ids
+      responses:
+        '200':
+          description: Chat created successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+  /messages:
+    post:
+      summary: Send a message
+      description: Send a message to a chat or user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                content:
+                  type: string
+                chat_id:
+                  type: string
+                sender_id:
+                  type: string
+                recipient_id:
+                  type: string
+                recipient_type:
+                  type: string
+                  enum: [individual, group]
+                created_at:
+                  type: integer
+                  format: int64
+                status:
+                  type: string
+                  enum: [sent, delivered, read]
+                type:
+                  type: string
+                  default: TEXT
+              required:
+                - id
+                - content
+                - chat_id
+                - sender_id
+                - recipient_type
+      responses:
+        '200':
+          description: Message sent successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string

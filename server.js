@@ -416,12 +416,14 @@ io.on('connection', (socket) => {
     }
 });
 
-// Test route for HTTP requests
-app.get('/oar', (req, res) => {
-    res.send('<h1>Socket.IO Server is Running</h1>');
-});
+
 
 // Start server
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+});
+
+// Test route for HTTP requests
+app.get('/oar', (req, res) => {
+    res.send('<h1>Socket.IO Server is Running</h1>');
 });

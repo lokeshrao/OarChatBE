@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
+const path = require('path');
 const admin = require('firebase-admin');
 
 const app = express();
@@ -18,10 +19,11 @@ const io = new Server(server, {
     }
 });
 
-const dataFile = 'userData.json';
-const chatFile = 'chats.json';
-const messagesFile = 'messages.json';
-
+// Use /tmp directory for file storage on Railway
+const dataDir = process.env.NODE_ENV === 'production' ? '/tmp' : './';
+const dataFile = path.join(dataDir, 'userData.json');
+const chatFile = path.join(dataDir, 'chats.json');
+const messagesFile = path.join(dataDir, 'messages.json');
 
 const PORT = process.env.PORT || 8080;
 
@@ -29,54 +31,102 @@ let users = {};
 let chats = {};
 let messages = {};
 
+// Load data from files with better error handling
+function loadDataFromFiles() {
+    try {
+        if (fs.existsSync(dataFile)) {
+            const data = fs.readFileSync(dataFile, 'utf-8');
+            users = JSON.parse(data);
+            console.log('User data loaded from file.');
+        }
+    } catch (err) {
+        console.error('Error loading user data:', err);
+        users = {};
+    }
 
-try {
-    const data = fs.readFileSync(dataFile, 'utf-8');
-    users = JSON.parse(data);
-    console.log('User data loaded from file.');
-} catch (err) {
-    console.error('Error loading user data:', err);
-}
-try {
-    const data = fs.readFileSync(chatFile, 'utf-8');
-    chats = JSON.parse(data);
-    console.log('Chat data loaded from file.');
-} catch (err) {
-    console.error('Error loading Chat data:', err);
-}
-try {
-    const data = fs.readFileSync(messagesFile, 'utf-8');
-    messages = JSON.parse(data);
-    console.log('messages data loaded from file.');
-} catch (err) {
-    console.error('Error loading Chat data:', err);
+    try {
+        if (fs.existsSync(chatFile)) {
+            const data = fs.readFileSync(chatFile, 'utf-8');
+            chats = JSON.parse(data);
+            console.log('Chat data loaded from file.');
+        }
+    } catch (err) {
+        console.error('Error loading chat data:', err);
+        chats = {};
+    }
+
+    try {
+        if (fs.existsSync(messagesFile)) {
+            const data = fs.readFileSync(messagesFile, 'utf-8');
+            messages = JSON.parse(data);
+            console.log('Messages data loaded from file.');
+        }
+    } catch (err) {
+        console.error('Error loading messages data:', err);
+        messages = {};
+    }
 }
 
+// Initialize data
+loadDataFromFiles();
 
 function saveUserDataToFile() {
     try {
-        fs.writeFileSync(dataFile, JSON.stringify(users), 'utf-8');
+        // Ensure directory exists
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+        fs.writeFileSync(dataFile, JSON.stringify(users, null, 2), 'utf-8');
     } catch (err) {
         console.error('Error saving user data:', err);
     }
 }
+
 function saveChatsToFile() {
     try {
-        fs.writeFileSync(chatFile, JSON.stringify(chats), 'utf-8');
+        // Ensure directory exists
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+        fs.writeFileSync(chatFile, JSON.stringify(chats, null, 2), 'utf-8');
     } catch (err) {
         console.error('Error saving chat data:', err);
     }
 }
+
 function saveMessagesToFile() {
     try {
-        fs.writeFileSync(messagesFile, JSON.stringify(messages), 'utf-8');
+        // Ensure directory exists
+        if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+        }
+        fs.writeFileSync(messagesFile, JSON.stringify(messages, null, 2), 'utf-8');
     } catch (err) {
-        console.error('Error saving chat data:', err);
+        console.error('Error saving messages data:', err);
     }
 }
+
 // Validate user ID
 function isValidUserId(userId) {
     return userId !== "null" && userId !== undefined && typeof userId === 'string' && userId.trim() !== '';
+}
+
+// Helper functions
+function getGroupMembers(chatId) {
+    const chat = chats[chatId];
+    if (chat && chat.type === "group") {
+        return chat.members; // Return the members array if it's a group chat
+    } else {
+        console.error("Chat ID not found or not a group chat");
+        return [];
+    }
+}
+
+function getSocketIdByUserId(userId) {
+    if (users[userId]) {
+        return users[userId].socket_id;
+    }
+    return null; // Return null if the user is not found
 }
 
 // Main Socket.IO connection handler
@@ -85,7 +135,7 @@ io.on('connection', (socket) => {
     const epochDateUser = socket.handshake.query.epoch_date_users;
     const epochDateChat = socket.handshake.query.epoch_date_chat;
     const epochDateMessages = socket.handshake.query.epoch_date_messages;
-    console.log(`tAKING dATA AFTER ${epochDateUser}  ${epochDateChat} ${epochDateMessages}`);
+    console.log(`Taking data after ${epochDateUser} ${epochDateChat} ${epochDateMessages}`);
 
     if (!isValidUserId(user_id)) {
         console.error(`Invalid user ID, disconnecting socket: ${socket.id}`);
@@ -98,14 +148,14 @@ io.on('connection', (socket) => {
             ...users[user_id],
             socket_id: socket.id,
             is_online: true,
-            last_online: Date.now()
+            last_online: Date.now(),
+            updated_at: Date.now()
         };
         socket.broadcast.emit('notificationMessage', {
             title: 'OarChat',
             message: `User ${users[user_id].name} is now online.`,
             body: user_id
         });
-        // console.log(`User online: ${user_id} - ${users[user_id].name}`);
         socket.broadcast.emit('user_data_update', users[user_id]);
         saveUserDataToFile();
     }
@@ -126,8 +176,8 @@ io.on('connection', (socket) => {
     sortedUsers.forEach(user => {
         socket.emit('user_data_update', user);
     });
-    const sortedChats = [];
 
+    const sortedChats = [];
     for (let chatKey in chats) {
         const chat = chats[chatKey];
 
@@ -147,13 +197,12 @@ io.on('connection', (socket) => {
         socket.emit('chat_created', chat);
     });
 
-
     const userChats = Object.values(chats).filter(chat => chat.members.includes(user_id));
-    const userChatIds = userChats.map(chat => chat.id); // Extract chat IDs
+    const userChatIds = userChats.map(chat => chat.id);
     const sortedMessages = [];
 
     for (let messageKey in messages) {
-        const messageArray = messages[messageKey]; // This is an array of messages
+        const messageArray = messages[messageKey];
         if (userChatIds.includes(messageKey)) {
             const filteredMessages = messageArray.filter(
                 message => message.created_at > epochDateMessages
@@ -169,36 +218,9 @@ io.on('connection', (socket) => {
         socket.emit('new_message', message);
     });
 
-
-
-
-
-
-    // Object.keys(users).forEach((userKey) => {
-    //     if (userKey !== user_id && users[userKey].updated_at > epochDate) {
-    //         // var name = ""
-    //         // if (users[user_id] && users[user_id] == null && users[user_id].name) {
-    //         //     name = users[user_id].name
-    //         // }
-    //         // console.log(`sending user: ${user_id} - ${name}`);
-    //         socket.emit('user_data_update', users[userKey]);
-    //     }
-    // });
-    // Object.keys(users).forEach((userKey) => {
-    //     if (userKey !== user_id && users[userKey].updated_at > epochDate) {
-    //         // var name = ""
-    //         // if (users[user_id] && users[user_id] == null && users[user_id].name) {
-    //         //     name = users[user_id].name
-    //         // }
-    //         // console.log(`sending user: ${user_id} - ${name}`);
-    //         socket.emit('user_data_update', users[userKey]);
-    //     }
-    // });
-
     socket.on('edit_user', (userData, ackCallback) => {
         const { user_id, name, email, username } = userData;
 
-        // Validate user ID (if needed)
         if (!isValidUserId(user_id)) {
             console.error(`Invalid user ID in edit_user: ${JSON.stringify(userData)}`);
             ackCallback({ success: false, message: 'Invalid user ID' });
@@ -208,17 +230,14 @@ io.on('connection', (socket) => {
         // Check if the username already exists for a different user
         for (let existingUserId in users) {
             if (users[existingUserId].username === username && existingUserId !== user_id) {
-                // If the username exists for a different user, ask the client to choose a new one
                 console.log(`Username already exists: ${username} for user ${existingUserId}`);
                 ackCallback({ success: false, message: 'Username already exists' });
                 return;
             }
         }
 
-        // Proceed with user update or creation
         if (users[user_id]) {
             console.log(`User updated: ${user_id}`);
-            // Update the user data
             Object.assign(users[user_id], {
                 id: user_id,
                 name: name,
@@ -229,7 +248,6 @@ io.on('connection', (socket) => {
                 updated_at: Date.now()
             });
         } else {
-            // Create a new user
             users[user_id] = {
                 id: user_id,
                 name: name,
@@ -249,33 +267,11 @@ io.on('connection', (socket) => {
             });
         }
 
-        // Emit success response
         ackCallback({ success: true });
-
-        // Broadcast user data update
         socket.broadcast.emit('user_data_update', users[user_id]);
-
-        // Save user data to file (if needed)
         saveUserDataToFile();
     });
 
-
-    // Event: Update user status
-    // socket.on('user_status_online', (data) => {
-    //     const { user_id, is_online, last_online } = data;
-
-    //     if (!isValidUserId(user_id)) {
-    //         console.error(`Invalid user ID in user_status_online: ${JSON.stringify(data)}`);
-    //         return;
-    //     }
-
-    //     users[user_id] = { ...users[user_id], socket_id: socket.id, is_online, last_online };
-    //     console.log(`User online: ${user_id}, Status: ${is_online ? 'Online' : 'Offline'}`);
-    //     socket.broadcast.emit('user_data_update', users[user_id]);
-    //     saveUserDataToFile();
-    // });
-
-    // Event: Store user's Firebase token and notify others
     socket.on('user_fb_token', (data) => {
         const { user_id, fb_token } = data;
 
@@ -289,7 +285,6 @@ io.on('connection', (socket) => {
         saveUserDataToFile();
     });
 
-    // Event: Disconnect user
     socket.on('disconnect_user', (key) => {
         const user_id = Object.keys(users).find(userId => users[userId].id === key.user_id);
         console.log(`User ${user_id} is now offline.`);
@@ -297,6 +292,7 @@ io.on('connection', (socket) => {
         if (user_id) {
             users[user_id].is_online = false;
             users[user_id].last_online = Date.now();
+            users[user_id].updated_at = Date.now();
             console.log(`User ${JSON.stringify(users[user_id])}`);
             socket.broadcast.emit('user_data_update', users[user_id]);
             saveUserDataToFile();
@@ -305,20 +301,22 @@ io.on('connection', (socket) => {
 
     socket.on('validate_chat_and_save', (chatJson) => {
         const { user_ids, id, name, type } = chatJson;
-        console.log(`Chat request: ${chatJson}`);
+        console.log(`Chat request: ${JSON.stringify(chatJson)}`);
 
         const chatExists = Object.values(chats).some(chat => {
             const membersMatch = chat.members.length === new Set(user_ids).size;
             const allUsersPresent = user_ids.every(userId => chat.members.includes(userId));
             return membersMatch && allUsersPresent;
         });
-        console.log(`Chat Exist: ${chatExists} }`);
+        console.log(`Chat Exist: ${chatExists}`);
+        
         if (chatExists === true) {
             socket.emit('chat_validation_response', {
                 exists: chatExists
             });
-            return
+            return;
         }
+        
         if (!chatExists) {
             chats[id] = {
                 id: id,
@@ -330,21 +328,22 @@ io.on('connection', (socket) => {
             };
             console.log(`Users: ${JSON.stringify(users)}`);
             console.log(`User Ids: ${JSON.stringify(user_ids)}`);
+            
             user_ids.forEach(userId => {
                 const user = users[userId];
                 socket.emit('chat_create_response', chats[id]);
                 console.log(`Sending to User: ${JSON.stringify(user)}`);
-                if (user) {
+                if (user && user.socket_id) {
                     io.to(user.socket_id).emit('chat_created', chats[id]);
                 }
             });
             console.log(`Chat created: ${JSON.stringify(chats[id])}`);
-            saveChatsToFile()
+            saveChatsToFile();
         }
     });
+
     socket.on('send_message', (data, ack) => {
         try {
-            // Parse incoming data
             const message = {
                 id: data.id,
                 content: data.content,
@@ -353,23 +352,28 @@ io.on('connection', (socket) => {
                 recipient_id: data.recipient_id,
                 recipient_type: data.recipient_type,
                 created_at: data.created_at,
+                updated_at: Date.now(),
                 status: data.status,
                 type: data.type || "TEXT",
             };
-
 
             if (!messages[message.chat_id]) {
                 messages[message.chat_id] = [];
             }
             messages[message.chat_id].push(message);
 
-            if (!chats[message.chat_id]) {
-                 chats[message.chat_id].last_message = message.content
+            // Fix the bug: check if chat exists before updating
+            if (chats[message.chat_id]) {
+                chats[message.chat_id].last_message = message.content;
+                chats[message.chat_id].updated_at = Date.now();
+                saveChatsToFile();
             }
-            saveMessagesToFile()
+            
+            saveMessagesToFile();
+
             if (message.recipient_type === "individual") {
                 const recipientSocketId = getSocketIdByUserId(message.recipient_id);
-                console.log("Recepent:", recipientSocketId);
+                console.log("Recipient:", recipientSocketId);
                 if (recipientSocketId) {
                     io.to(recipientSocketId).emit('new_message', message);
                 }
@@ -392,38 +396,65 @@ io.on('connection', (socket) => {
         } catch (error) {
             console.error("Error handling send_message:", error);
 
-            // Acknowledge failure
             if (typeof ack === 'function') {
                 ack({ success: false, error: "Failed to deliver message." });
             }
         }
     });
-    function getGroupMembers(chatId) {
-        const chat = chats[chatId];
-        if (chat && chat.type === "group") {
-            return chat.members; // Return the members array if it's a group chat
-        } else {
-            console.error("Chat ID not found or not a group chat");
-            return [];
-        }
-    }
 
-    function getSocketIdByUserId(userId) {
-        if (users[userId]) {
-            return users[userId].socket_id;
+    // Handle disconnect
+    socket.on('disconnect', () => {
+        console.log(`Socket disconnected: ${socket.id}`);
+        
+        // Find the user associated with this socket
+        for (let userId in users) {
+            if (users[userId].socket_id === socket.id) {
+                users[userId].is_online = false;
+                users[userId].last_online = Date.now();
+                users[userId].updated_at = Date.now();
+                console.log(`User ${userId} went offline due to disconnect`);
+                socket.broadcast.emit('user_data_update', users[userId]);
+                saveUserDataToFile();
+                break;
+            }
         }
-        return null; // Return null if the user is not found
-    }
+    });
 });
 
-
-
-// Start server
-server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+// Health check endpoint for Railway
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'healthy', 
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        users: Object.keys(users).length,
+        chats: Object.keys(chats).length
+    });
 });
 
 // Test route for HTTP requests
 app.get('/oar', (req, res) => {
     res.send('<h1>Socket.IO Server is Running</h1>');
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+        console.log('Process terminated');
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully');
+    server.close(() => {
+        console.log('Process terminated');
+    });
+});
+
+// Start server
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Data directory: ${dataDir}`);
 });

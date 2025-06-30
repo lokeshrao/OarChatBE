@@ -1,14 +1,18 @@
 {
   "name": "oarchat",
   "version": "1.0.0",
-  "description": "",
+  "description": "OarChat Socket.IO Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "node server.js",
+    "dev": "node server.js",
+    "build": "echo 'No build step required'",
     "test": "mocha test.js"
   },
-  "keywords": [],
+  "engines": {
+    "node": ">=14.x"
+  },
+  "keywords": ["socket.io", "chat", "realtime"],
   "author": "",
   "license": "ISC",
   "dependencies": {

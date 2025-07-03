@@ -2,17 +2,21 @@
   "name": "oarchat",
   "version": "1.0.0",
   "description": "OarChat Socket.IO Server",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "build": "echo 'No build step required'",
     "test": "mocha test.js"
   },
   "engines": {
     "node": ">=14.x"
   },
-  "keywords": ["socket.io", "chat", "realtime"],
+  "keywords": [
+    "socket.io",
+    "chat",
+    "realtime"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -23,12 +27,15 @@
     "chai": "^5.1.2",
     "chai-http": "^5.1.1",
     "cors": "^2.8.5",
+    "dotenv": "^17.0.1",
     "express": "^4.21.2",
     "firebase-admin": "^13.0.2",
     "mocha": "^11.0.1",
+    "mongoose": "^8.16.1",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
+    "nodemon": "^3.0.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2"
   }

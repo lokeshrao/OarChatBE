@@ -4,8 +4,8 @@ const ChatSchema = new mongoose.Schema({
   name: String,
   type: { type: String, enum: ['individual', 'group'] },
   members: [String],
-  createdAt: Date,
-  updatedAt: Date,
+  createdAt: Number,
+  updatedAt: Number,
   lastMessage: String,
 }, { _id: false });
 

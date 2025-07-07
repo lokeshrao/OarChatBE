@@ -12,17 +12,34 @@ const app = express();
 app.use(cors(), express.json(), express.urlencoded({ extended: true }));
 
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] }
+});
 
+// ✅ MongoDB connection
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-}).then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
+})
+.then(() => console.log('✅ MongoDB connected'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
+// ✅ Socket.IO handler
 io.on('connection', async socket => {
   const { user_id, epoch_date_users, epoch_date_chat, epoch_date_messages } = socket.handshake.query;
   console.log(`📡 New socket connected: ${socket.id}, user: ${user_id}`);
+
+  if (epoch_date_users) {
+    console.log(`📦 epoch_date_users: ${epoch_date_users} → ${new Date(+epoch_date_users).toLocaleString()}`);
+  }
+
+  if (epoch_date_chat) {
+    console.log(`💬 epoch_date_chat: ${epoch_date_chat} → ${new Date(+epoch_date_chat).toLocaleString()}`);
+  }
+
+  if (epoch_date_messages) {
+    console.log(`📨 epoch_date_messages: ${epoch_date_messages} → ${new Date(+epoch_date_messages).toLocaleString()}`);
+  }
 
   if (!user_id) {
     console.warn(`❌ Missing user_id. Disconnecting socket ${socket.id}`);
@@ -33,15 +50,18 @@ io.on('connection', async socket => {
     const user = await userSvc.findOrCreate(user_id, socket.id, {});
     console.log(`👤 User connected: ${user.name} (${user._id})`);
 
+    socket.broadcast.emit('user_data_update', user);
+
     const sinceUsers = await userSvc.getUpdatedSince(epoch_date_users || 0);
-    sinceUsers.filter(u => u._id !== user_id).forEach(u => socket.emit('user_data_update', u));
+    sinceUsers.filter(u => u._id !== user_id).forEach(u => socket.emit('user_data_sync', u));
 
     const sinceChats = await chatSvc.getUserChatsSince(user_id, epoch_date_chat || 0);
-    sinceChats.forEach(c => socket.emit('chat_created', c));
+    sinceChats.forEach(c => socket.emit('chat_data_sync', c));
 
     const chatIds = sinceChats.map(c => c._id);
     const sinceMsgs = await msgSvc.getMessagesSince(chatIds, epoch_date_messages || 0);
-    sinceMsgs.forEach(m => socket.emit('new_message', m));
+    sinceMsgs.forEach(m => socket.emit('message_data_sync', m));
+
   } catch (err) {
     console.error(`❌ Error during socket init:`, err);
   }
@@ -75,21 +95,32 @@ io.on('connection', async socket => {
 
   socket.on('validate_chat_and_save', async chatJson => {
     try {
-      const exists = await chatSvc.existsWithMembers(chatJson.user_ids);
+      const { members = [] } = chatJson;
+      const uniqueMembers = [...new Set(members)];
+      if (!Array.isArray(members) || uniqueMembers.length < 2) {
+        socket.emit('chat_validation_response', {
+          error: 'At least 2 distinct user IDs are required in members array',
+        });
+        console.warn(`⚠️ Invalid members array:`, members);
+        return;
+      }
+
+      const exists = await chatSvc.existsWithMembers(members);
       socket.emit('chat_validation_response', { exists });
       console.log(`💬 Chat validation (${chatJson.name}) exists: ${exists}`);
 
       if (!exists) {
         const newChat = await chatSvc.createChat(chatJson);
         console.log(`🆕 Chat created: ${newChat.name} (${newChat._id})`);
-
-        for (const uid of chatJson.user_ids) {
-          const u = await userSvc.findOrCreate(uid, null, {});
+        for (const uid of members) {
+          const u = await userSvc.findOnly(uid);
           if (u.socketId) {
             io.to(u.socketId).emit('chat_created', newChat);
+            console.log(`📤 Chat created notification sent to ${uid} (socketId: ${u.socketId})`);
           }
         }
       }
+
     } catch (err) {
       console.error(`❌ validate_chat_and_save error:`, err);
     }
@@ -97,29 +128,56 @@ io.on('connection', async socket => {
 
   socket.on('send_message', async (data, ack) => {
     try {
-      const saved = await msgSvc.addMessage(data);
-      await chatSvc.updateLastMessage(data.chat_id, data.content);
-      console.log(`📨 Message saved: ${saved.content} (${saved._id})`);
+      console.log('📨 Received message:', JSON.stringify(data, null, 2));
+      const { chatId, content, senderId, recipientId, recipientType } = data;
 
-      const recipients = data.recipient_type === 'individual'
-        ? [data.recipient_id]
-        : (await chatSvc.getChatById(data.chat_id)).members.filter(m => m !== data.sender_id);
+      if (!chatId || !content || !senderId || !recipientType) {
+        console.warn('⚠️ Invalid message payload:', data);
+        return ack({ success: false, error: 'Missing required message fields' });
+      }
 
-      for (const r of recipients) {
-        const u = await userSvc.findOrCreate(r, null, {});
-        if (u.socketId) {
-          io.to(u.socketId).emit('new_message', saved);
+      const savedMessage = await msgSvc.addMessage(data);
+      console.log(`💾 Message saved: ${savedMessage.content} (id: ${savedMessage._id})`);
+
+      await chatSvc.updateLastMessage(chatId, content);
+      console.log(`📌 Updated chat ${chatId} with last message.`);
+
+      let recipients;
+      if (recipientType === 'individual') {
+        recipients = [recipientId];
+      } else if (recipientType === 'group') {
+        const chat = await chatSvc.getChatById(chatId);
+        if (!chat) {
+          console.warn(`⚠️ Chat not found for id: ${chatId}`);
+          return ack({ success: false, error: 'Chat not found' });
+        }
+        recipients = chat.members.filter(uid => uid !== senderId);
+      } else {
+        console.warn(`⚠️ Unknown recipientType: ${recipientType}`);
+        return ack({ success: false, error: 'Invalid recipient type' });
+      }
+
+      console.log(`👥 Sending message to recipients: ${recipients.join(', ')}`);
+      for (const recipient of recipients) {
+        const user = await userSvc.findOnly(recipient);
+        if (user?.socketId) {
+          io.to(user.socketId).emit('new_message', savedMessage);
+          console.log(`📤 Message sent to ${recipient} (socketId: ${user.socketId})`);
+        } else {
+          console.warn(`⚠️ User ${recipient} is offline or has no socket connection.`);
         }
       }
 
       ack({ success: true });
-    } catch (e) {
-      console.error(`❌ send_message error:`, e);
-      ack({ success: false, error: e.message });
+
+    } catch (err) {
+      console.error(`❌ Error in send_message:`, err);
+      ack({ success: false, error: err.message });
     }
   });
 });
 
+// ✅ Express routes
 app.get('/health', (req, res) => {
   console.log('✅ Health check requested');
   res.json({ status: 'OK', timestamp: new Date(), uptime: process.uptime() });
@@ -127,6 +185,7 @@ app.get('/health', (req, res) => {
 
 app.get('/oar', (req, res) => res.send('<h1>Socket.IO Server is Running</h1>'));
 
+// ✅ Graceful shutdown handlers
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received, shutting down...');
   mongoose.disconnect().then(() => process.exit(0));
@@ -137,6 +196,8 @@ process.on('SIGTERM', () => {
   mongoose.disconnect().then(() => process.exit(0));
 });
 
-server.listen(process.env.PORT || 8080, () =>
-  console.log(`🚀 Server on port ${process.env.PORT || 8080}`)
-);
+// ✅ Start server
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+  console.log(`🚀 Server listening on port ${PORT}`);
+});

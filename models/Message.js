@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const MessageSchema = new mongoose.Schema({
-  _id: String, // message id
+  _id: String, 
   chatId: String,
   senderId: String,
   recipientId: String,
@@ -8,8 +8,8 @@ const MessageSchema = new mongoose.Schema({
   content: String,
   type: { type: String, default: 'TEXT' },
   status: String,
-  createdAt: Date,
-  updatedAt: Date,
+  createdAt: Number,
+  updatedAt: Number,
 });
 
 MessageSchema.index({ chatId: 1, createdAt: 1 });

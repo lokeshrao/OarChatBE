@@ -7,9 +7,9 @@ const UserSchema = new mongoose.Schema({
   username: { type: String, unique: true },
   socketId: String,
   isOnline: Boolean,
-  lastOnline: Date,
-  createdAt: Date,
-  updatedAt: Date,
+  lastOnline: Number,
+  createdAt: Number,
+  updatedAt: Number,
   fbToken: String,
 }, { _id: false });
 

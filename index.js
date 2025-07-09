@@ -93,39 +93,49 @@ io.on('connection', async socket => {
     }
   });
 
-  socket.on('validate_chat_and_save', async chatJson => {
+  socket.on('validate_chat_and_save', async (chatJson, ack) => {
     try {
       const { members = [] } = chatJson;
       const uniqueMembers = [...new Set(members)];
+  
+      // Validate members array
       if (!Array.isArray(members) || uniqueMembers.length < 2) {
-        socket.emit('chat_validation_response', {
-          error: 'At least 2 distinct user IDs are required in members array',
-        });
+        const errorMsg = 'At least 2 distinct user IDs are required in members array';
+        socket.emit('chat_validation_response', { error: errorMsg });
         console.warn(`⚠️ Invalid members array:`, members);
+        if (typeof ack === 'function') ack({ success: false, error: errorMsg });
         return;
       }
-
+  
+      // Check if chat exists
       const exists = await chatSvc.existsWithMembers(members);
-      socket.emit('chat_validation_response', { exists });
-      console.log(`💬 Chat validation (${chatJson.name}) exists: ${exists}`);
-
-      if (!exists) {
-        const newChat = await chatSvc.createChat(chatJson);
-        console.log(`🆕 Chat created: ${newChat.name} (${newChat._id})`);
-        for (const uid of members) {
-          const u = await userSvc.findOnly(uid);
-          if (u.socketId) {
-            io.to(u.socketId).emit('chat_created', newChat);
-            console.log(`📤 Chat created notification sent to ${uid} (socketId: ${u.socketId})`);
-          }
+  
+      if (exists) {
+        // Chat exists: send error ack to requester
+        const errorMsg = 'Chat with these members already exists';
+        console.log(`💬 Chat validation (${chatJson.name}) exists: ${exists}`);
+        if (typeof ack === 'function') ack({ success: false, error: errorMsg });
+        return;
+      }
+  
+      const newChat = await chatSvc.createChat(chatJson);
+      console.log(`🆕 Chat created: ${newChat.name} (${newChat._id})`);
+  
+      if (typeof ack === 'function') ack({ success: true, chat: newChat });
+  
+      for (const uid of members) {
+        const u = await userSvc.findOnly(uid);
+        if (u && u.socketId) {
+          io.to(u.socketId).emit('chat_created', newChat);
+          console.log(`📤 Chat created notification sent to ${uid} (socketId: ${u.socketId})`);
         }
       }
-
     } catch (err) {
       console.error(`❌ validate_chat_and_save error:`, err);
+      if (typeof ack === 'function') ack({ success: false, error: 'Internal server error' });
     }
   });
-
+  
   socket.on('send_message', async (data, ack) => {
     try {
       console.log('📨 Received message:', JSON.stringify(data, null, 2));

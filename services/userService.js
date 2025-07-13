@@ -19,6 +19,32 @@ async function findOrCreate(userId, socketId, data) {
 
   return User.findByIdAndUpdate(userId, update, opts).exec();
 }
+
+  async function updateIfExists(userId, socketId, isOnline = false) {
+  const now = Date.now();
+
+  const update = {
+    socketId,
+    isOnline,
+    lastOnline: now,
+    updatedAt: now,
+  };
+
+
+  const result = await User.findByIdAndUpdate(
+    userId,
+    update,
+    { new: true }
+  ).exec();
+
+  if (!result) {
+    console.log(`⚠️ User not found, skipping creation: userId = ${userId}`);
+  }
+
+  return result;
+}
+
+
 async function findOnly(userId) {
   try {
     const user = await User.findById(userId).exec();
@@ -49,6 +75,7 @@ async function getUpdatedSince(since) {
 module.exports = {
   findOrCreate,
   updateOnlineStatus,
+  updateIfExists,
   findOnly,
   getUpdatedSince,
 };

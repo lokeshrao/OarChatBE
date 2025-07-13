@@ -24,7 +24,6 @@ async function getUserChatsSince(userId, since) {
     updatedAt: { $gt: sinceEpoch },
   }).exec();
 
-  console.log(`📦 getUserChatsSince → user: ${userId}, since: ${sinceEpoch} (${new Date(sinceEpoch).toLocaleString()})`);
   console.log(`🗂️  Fetched ${chats.length} chat(s):`);
   chats.forEach(chat => {
     console.log(`➡️  Chat: ${chat.name} (${chat._id}), updatedAt: ${chat.updatedAt} (${new Date(chat.updatedAt).toLocaleString()})`);

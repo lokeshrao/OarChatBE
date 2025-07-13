@@ -26,45 +26,31 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // ✅ Socket.IO handler
 io.on('connection', async socket => {
-  const { user_id, epoch_date_users, epoch_date_chat, epoch_date_messages } = socket.handshake.query;
-  console.log(`📡 New socket connected: ${socket.id}, user: ${user_id}`);
-
-  if (epoch_date_users) {
-    console.log(`📦 epoch_date_users: ${epoch_date_users} → ${new Date(+epoch_date_users).toLocaleString()}`);
-  }
-
-  if (epoch_date_chat) {
-    console.log(`💬 epoch_date_chat: ${epoch_date_chat} → ${new Date(+epoch_date_chat).toLocaleString()}`);
-  }
-
-  if (epoch_date_messages) {
-    console.log(`📨 epoch_date_messages: ${epoch_date_messages} → ${new Date(+epoch_date_messages).toLocaleString()}`);
-  }
-
+  const { user_id,is_from_service,epoch_date_users, epoch_date_chat, epoch_date_messages } = socket.handshake.query;
+  
   if (!user_id) {
     console.warn(`❌ Missing user_id. Disconnecting socket ${socket.id}`);
     return socket.disconnect(true);
   }
 
   try {
-    const user = await userSvc.findOrCreate(user_id, socket.id, {});
-    console.log(`👤 User connected: ${user.name} (${user._id})`);
-
+    const user = await userSvc.updateIfExists(user_id, socket.id, is_from_service);
+  
+    const syncEpochUsers = Number(epoch_date_users || 0);
+    const syncEpochChat = Number(epoch_date_chat || 0);
+    const syncEpochMessages = Number(epoch_date_messages || 0);
+  
+    console.log(`✅ Sync request for ${user.username} (${user._id}) ${syncEpochUsers} ${syncEpochChat} ${syncEpochMessages} `);
+  
     socket.broadcast.emit('user_data_update', user);
-
-    const sinceUsers = await userSvc.getUpdatedSince(epoch_date_users || 0);
-    sinceUsers.filter(u => u._id !== user_id).forEach(u => socket.emit('user_data_sync', u));
-
-    const sinceChats = await chatSvc.getUserChatsSince(user_id, epoch_date_chat || 0);
-    sinceChats.forEach(c => socket.emit('chat_data_sync', c));
-
-    const chatIds = sinceChats.map(c => c._id);
-    const sinceMsgs = await msgSvc.getMessagesSince(chatIds, epoch_date_messages || 0);
-    sinceMsgs.forEach(m => socket.emit('message_data_sync', m));
-
+  
+    // Perform ordered, chunked sync
+    await performInitialSync(socket, user_id, syncEpochUsers, syncEpochChat, syncEpochMessages);
+  
   } catch (err) {
     console.error(`❌ Error during socket init:`, err);
   }
+  
 
   socket.on('edit_user', async (data, ack) => {
     try {
@@ -76,11 +62,6 @@ io.on('connection', async socket => {
       console.error(`❌ Failed to edit user:`, e);
       ack({ success: false, message: e.message });
     }
-  });
-
-  socket.on('user_fb_token', async ({ user_id, fb_token }) => {
-    await userSvc.findOrCreate(user_id, socket.id, { fbToken: fb_token });
-    console.log(`🔐 FB token updated for user ${user_id}`);
   });
 
   socket.on('disconnect', async () => {
@@ -186,6 +167,66 @@ io.on('connection', async socket => {
     }
   });
 });
+
+async function performInitialSync(socket, user_id, syncEpochUsers, syncEpochChat, syncEpochMessages) {
+  console.log(`🔄 Starting initial sync for user ${user_id}...`);
+
+  if (syncEpochUsers) {
+    console.log(`🧩 Syncing users updated since ${new Date(syncEpochUsers).toLocaleString()}`);
+    const sinceUsers = await userSvc.getUpdatedSince(syncEpochUsers);
+    const filteredUsers = sinceUsers.filter(u => u._id !== user_id);
+    await syncDataInChunks(socket, 'user_data_sync', filteredUsers);
+  } else {
+    console.log('⚠️ User sync timestamp not provided, skipping user sync.');
+  }
+
+  if (syncEpochChat) {
+    console.log(`🧩 Syncing chats updated since ${new Date(syncEpochChat).toLocaleString()}`);
+    const sinceChats = await chatSvc.getUserChatsSince(user_id, syncEpochChat);
+    await syncDataInChunks(socket, 'chat_data_sync', sinceChats);
+
+    if (syncEpochMessages) {
+      console.log(`🧩 Syncing messages updated since ${new Date(syncEpochMessages).toLocaleString()}`);
+      const chatIds = sinceChats.map(c => c._id);
+      const sinceMsgs = await msgSvc.getMessagesSince(chatIds, syncEpochMessages);
+      await syncDataInChunks(socket, 'message_data_sync', sinceMsgs);
+    } else {
+      console.log('⚠️ Message sync timestamp not provided, skipping message sync.');
+    }
+  } else {
+    console.log('⚠️ Chat sync timestamp not provided, skipping chat and message sync.');
+  }
+
+  console.log(`✅ Initial sync completed for user ${user_id}`);
+}
+
+async function syncDataInChunks(socket, event, dataList, chunkSize = 50) {
+  if (!dataList.length) {
+    console.log(`ℹ️ No data to sync for ${event}`);
+    return;
+  }
+
+  const sorted = dataList.sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt)); // oldest to newest
+  const chunks = [];
+
+  for (let i = 0; i < sorted.length; i += chunkSize) {
+    chunks.push(sorted.slice(i, i + chunkSize));
+  }
+
+  console.log(`🚚 Syncing ${chunks.length} chunk(s) for ${event} (${dataList.length} item(s))`);
+
+  for (let i = 0; i < chunks.length; i++) {
+    await new Promise(resolve => {
+      socket.emit(event, chunks[i], () => {
+        console.log(`✅ Acknowledged: ${event} chunk ${i + 1}/${chunks.length}`);
+        resolve();
+      });
+    });
+  }
+
+  console.log(`✅ Finished syncing all chunks for ${event}`);
+}
+
 
 // ✅ Express routes
 app.get('/health', (req, res) => {

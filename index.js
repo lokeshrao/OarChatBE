@@ -21,13 +21,13 @@ mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('✅ MongoDB connected'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // ✅ Socket.IO handler
 io.on('connection', async socket => {
-  const { user_id,is_from_service,epoch_date_users, epoch_date_chat, epoch_date_messages } = socket.handshake.query;
-  
+  const { user_id, is_from_service, epoch_date_users, epoch_date_chat, epoch_date_messages } = socket.handshake.query;
+
   if (!user_id) {
     console.warn(`❌ Missing user_id. Disconnecting socket ${socket.id}`);
     return socket.disconnect(true);
@@ -35,22 +35,22 @@ io.on('connection', async socket => {
 
   try {
     const user = await userSvc.updateIfExists(user_id, socket.id, is_from_service);
-  
+
     const syncEpochUsers = Number(epoch_date_users || 0);
     const syncEpochChat = Number(epoch_date_chat || 0);
     const syncEpochMessages = Number(epoch_date_messages || 0);
-  
+
     console.log(`✅ Sync request for ${user.username} (${user._id}) ${syncEpochUsers} ${syncEpochChat} ${syncEpochMessages} `);
-  
+
     socket.broadcast.emit('user_data_update', user);
-  
+
     // Perform ordered, chunked sync
     await performInitialSync(socket, user_id, syncEpochUsers, syncEpochChat, syncEpochMessages);
-  
+
   } catch (err) {
     console.error(`❌ Error during socket init:`, err);
   }
-  
+
 
   socket.on('edit_user', async (data, ack) => {
     try {
@@ -78,7 +78,7 @@ io.on('connection', async socket => {
     try {
       const { members = [] } = chatJson;
       const uniqueMembers = [...new Set(members)];
-  
+
       // Validate members array
       if (!Array.isArray(members) || uniqueMembers.length < 2) {
         const errorMsg = 'At least 2 distinct user IDs are required in members array';
@@ -87,10 +87,10 @@ io.on('connection', async socket => {
         if (typeof ack === 'function') ack({ success: false, error: errorMsg });
         return;
       }
-  
+
       // Check if chat exists
       const exists = await chatSvc.existsWithMembers(members);
-  
+
       if (exists) {
         // Chat exists: send error ack to requester
         const errorMsg = 'Chat with these members already exists';
@@ -98,12 +98,12 @@ io.on('connection', async socket => {
         if (typeof ack === 'function') ack({ success: false, error: errorMsg });
         return;
       }
-  
+
       const newChat = await chatSvc.createChat(chatJson);
       console.log(`🆕 Chat created: ${newChat.name} (${newChat._id})`);
-  
+
       if (typeof ack === 'function') ack({ success: true, chat: newChat });
-  
+
       for (const uid of members) {
         const u = await userSvc.findOnly(uid);
         if (u && u.socketId) {
@@ -116,56 +116,72 @@ io.on('connection', async socket => {
       if (typeof ack === 'function') ack({ success: false, error: 'Internal server error' });
     }
   });
-  
+
   socket.on('send_message', async (data, ack) => {
     try {
-      console.log('📨 Received message:', JSON.stringify(data, null, 2));
-      const { chatId, content, senderId, recipientId, recipientType } = data;
+        const { chatId, content, senderId, recipientId, recipientType } = data;
 
-      if (!chatId || !content || !senderId || !recipientType) {
-        console.warn('⚠️ Invalid message payload:', data);
-        return ack({ success: false, error: 'Missing required message fields' });
-      }
-
-      const savedMessage = await msgSvc.addMessage(data);
-      console.log(`💾 Message saved: ${savedMessage.content} (id: ${savedMessage._id})`);
-
-      await chatSvc.updateLastMessage(chatId, content);
-      console.log(`📌 Updated chat ${chatId} with last message.`);
-
-      let recipients;
-      if (recipientType === 'individual') {
-        recipients = [recipientId];
-      } else if (recipientType === 'group') {
-        const chat = await chatSvc.getChatById(chatId);
-        if (!chat) {
-          console.warn(`⚠️ Chat not found for id: ${chatId}`);
-          return ack({ success: false, error: 'Chat not found' });
+        if (!chatId || !content || !senderId || !recipientType) {
+            console.warn('⚠️ Invalid message payload.');
+            return ack({ success: false, error: 'Missing required message fields' });
         }
-        recipients = chat.members.filter(uid => uid !== senderId);
-      } else {
-        console.warn(`⚠️ Unknown recipientType: ${recipientType}`);
-        return ack({ success: false, error: 'Invalid recipient type' });
-      }
 
-      console.log(`👥 Sending message to recipients: ${recipients.join(', ')}`);
-      for (const recipient of recipients) {
-        const user = await userSvc.findOnly(recipient);
-        if (user?.socketId) {
-          io.to(user.socketId).emit('new_message', savedMessage);
-          console.log(`📤 Message sent to ${recipient} (socketId: ${user.socketId})`);
+        data.status = 'SENT';
+        const savedMessage = await msgSvc.addMessage(data);
+        console.log(`💾 Message saved: ${savedMessage._id} | Chat: ${chatId}`);
+
+        await chatSvc.updateLastMessage(chatId, content);
+        console.log(`🔄 Chat updated with last message: ${chatId}`);
+
+        let recipients;
+        if (recipientType === 'individual') {
+            recipients = [recipientId];
+        } else if (recipientType === 'group') {
+            const chat = await chatSvc.getChatById(chatId);
+            if (!chat) {
+                console.warn(`⚠️ Chat not found: ${chatId}`);
+                return ack({ success: false, error: 'Chat not found' });
+            }
+            recipients = chat.members.filter(uid => uid !== senderId);
         } else {
-          console.warn(`⚠️ User ${recipient} is offline or has no socket connection.`);
+            console.warn('⚠️ Unknown recipientType.');
+            return ack({ success: false, error: 'Invalid recipient type' });
         }
-      }
 
-      ack({ success: true });
+        console.log(`📤 Sending message ${savedMessage._id} to: ${recipients.join(', ')}`);
+
+        for (const recipient of recipients) {
+            const user = await userSvc.findOnly(recipient);
+            if (user?.socketId) {
+                io.to(user.socketId).timeout(5000).emit('new_message', savedMessage, async (err, response) => {
+                    if (err) {
+                        console.warn(`⚠️ No delivery ACK from: ${recipient}`);
+                        return;
+                    }
+
+                    await msgSvc.updateMessageStatus(savedMessage._id, { status: 'DELIVERED' });
+                    console.log(`✅ Message DELIVERED to: ${recipient}`);
+
+                    const sender = await userSvc.findOnly(senderId);
+                    if (sender?.socketId) {
+                        io.to(sender.socketId).emit('message_status_updated', {
+                            messageId: savedMessage._id,
+                            status: 'DELIVERED',
+                            recipientId: recipient
+                        });
+                    }
+                });
+            }
+        }
+
+        ack({ success: true });
 
     } catch (err) {
-      console.error(`❌ Error in send_message:`, err);
-      ack({ success: false, error: err.message });
+        console.error('❌ send_message error:', err);
+        ack({ success: false, error: err.message });
     }
-  });
+});
+
 });
 
 async function performInitialSync(socket, user_id, syncEpochUsers, syncEpochChat, syncEpochMessages) {
@@ -187,9 +203,8 @@ async function performInitialSync(socket, user_id, syncEpochUsers, syncEpochChat
 
     if (syncEpochMessages) {
       console.log(`🧩 Syncing messages updated since ${new Date(syncEpochMessages).toLocaleString()}`);
-      const chatIds = sinceChats.map(c => c._id);
-      const sinceMsgs = await msgSvc.getMessagesSince(chatIds, syncEpochMessages);
-      await syncDataInChunks(socket, 'message_data_sync', sinceMsgs);
+      const sinceMsgs = await msgSvc.getMessagesSince(user_id, syncEpochMessages);
+      syncMessagesForUser(socket,user_id,sinceMsgs)
     } else {
       console.log('⚠️ Message sync timestamp not provided, skipping message sync.');
     }
@@ -199,6 +214,57 @@ async function performInitialSync(socket, user_id, syncEpochUsers, syncEpochChat
 
   console.log(`✅ Initial sync completed for user ${user_id}`);
 }
+async function syncMessagesForUser(socket, userId, messages, chunkSize = 50) {
+    console.log(`🔄 Starting message sync for user ${userId}...`);
+
+    if (!messages.length) {
+        console.log(`ℹ️ No messages to sync for user ${userId}`);
+        return;
+    }
+
+    const sorted = messages.sort((a, b) => new Date(a.updatedAt) - new Date(b.updatedAt));
+    const chunks = [];
+    for (let i = 0; i < sorted.length; i += chunkSize) {
+        chunks.push(sorted.slice(i, i + chunkSize));
+    }
+
+    console.log(`🚚 Syncing ${chunks.length} chunks of messages to user ${userId}`);
+
+    for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        await new Promise(resolve => {
+            socket.timeout(5000).emit('message_data_sync', chunk, async (err, response) => {
+                if (err) {
+                    console.warn(`⚠️ No ACK for chunk ${i + 1}/${chunks.length} from user ${userId}`);
+                    return resolve();
+                }
+
+                console.log(`✅ ACK received for chunk ${i + 1}/${chunks.length} from user ${userId}`);
+
+                for (const message of chunk) {
+                    if (message.senderId !== userId) {
+                        await msgSvc.updateMessageStatus(message._id, {
+                            status: 'DELIVERED'
+                         });
+
+                        const sender = await userSvc.findOnly(message.senderId);
+                        if (sender?.socketId) {
+                            socket.to(sender.socketId).emit('message_status_updated', {
+                                messageId: message._id,
+                                status: 'DELIVERED',
+                                recipientId: userId,
+                            });
+                        }
+                    }
+                }
+                resolve();
+            });
+        });
+    }
+
+    console.log(`✅ Finished syncing messages for user ${userId}`);
+}
+
 
 async function syncDataInChunks(socket, event, dataList, chunkSize = 50) {
   if (!dataList.length) {
